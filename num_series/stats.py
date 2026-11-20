@@ -13,10 +13,12 @@ def median(data: Sequence[float]) -> float:
     """Вычисление медианы."""
     _ensure_not_empty(data)
     s = sorted(data)
-    k = len(s) // 2
-    if len(s) % 2 == 0:
-        return float(s[k])
-    return (s[k - 1] + s[k]) / 2.0
+    n = len(s) 
+    mid = n // 2
+    if n % 2 == 1:
+        return float(s[mid])
+    else:
+        return (s[mid - 1] + s[mid]) / 2.0
 
 def spread(data: Sequence[float]) -> float:
     """Вычисление размаха (max - min)."""
