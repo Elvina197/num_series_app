@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Dict, Sequence
 
 def _ensure_not_empty(data: Sequence[float]) -> None:
     if not data:
