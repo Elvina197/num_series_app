@@ -5,6 +5,8 @@ from collections import deque
 from typing import List, Sequence 
 
 def check_window(window: int, n: int) -> None:
+    if not isinstance(window, int) or isinstance(window, bool):
+        raise ValueError(f"window должен быть целым, получено: {window!r}")
     if not isinstance(window, int) or window <= 0:
         raise ValueError("window - целое > 1")
     if window > n:
@@ -24,21 +26,24 @@ def centered_moving_average(data: Sequence[float], window: int) -> List[float]:
     """Центр. скользящая средняя (нечетное окно)"""
     check_window(window, len(data))
     if window % 2 == 0:
-        raise ValueError("Окно для центр. средней должно быть нечетным")
+        raise ValueError("Окно для центрированной средней должно быть нечётным")
     half = window // 2
     result = []
     # Идем по ряду так, чтобы окно помещалось целиком
     for i in range(half, len(data) - half):
-            current_window = data[i - half : i + half + 1]
-    result.append(sum(current_window) / window)
+        current_window = data[i - half : i + half + 1]
+        # ВАЖНО: этот append должен быть внутри цикла (с отступом)
+        result.append(sum(current_window) / window) 
+        
     return result
 
 def exponential_moving_average(data: Sequence[float], alpha: float) -> List[float]:
     """Экспонц. скользящая средняя""" 
+    if not data:
+        raise ValueError("Ряд пуст: расчет EMA невозможен")
     if not (0 < alpha <= 1):
         raise ValueError("alpha должно быть в диапазоне (0, 1]")
-    if not data:
-        return []
+    
     ema = [data[0]]
     for i in range(1, len(data)):
         next_val = alpha * data[i] + (1 - alpha) * ema[i - 1]
