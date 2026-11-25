@@ -1,5 +1,9 @@
 from typing import List, Sequence
 
+import time 
+from collections import deque 
+from typing import List, Sequence 
+
 def check_window(window: int, n: int) -> None:
     if not isinstance(window, int) or window <= 0:
         raise ValueError("window - целое > 1")
@@ -40,4 +44,39 @@ def exponential_moving_average(data: Sequence[float], alpha: float) -> List[floa
         next_val = alpha * data[i] + (1 - alpha) * ema[i - 1]
         ema.append(next_val)
     return ema 
+
+def simple_moving_average_deque(data: Sequence[float], window: int) -> List[float]: 
+    """SMA с использованием deque (двусторонней очереди).""" 
+    check_window(window, len(data)) 
+    result = [] 
+    d = deque() 
+    running_sum = 0.0 
+    for x in data: 
+        d.append(x) 
+        running_sum += x 
+        if len(d) > window: 
+            running_sum -= d.popleft() 
+        if len(d) == window: 
+            result.append(running_sum / window) 
+    return result 
+def benchmark_moving_average(data: Sequence[float], window: int, repeats: int = 1000) -> dict: 
+    """ 
+    Замеряет среднее время выполнения SMA для реализаций на list и deque. 
+    Возвращает словарь с ключами 'list' и 'deque' (время в секундах). 
+    """ 
+    # Проверка корректности окна (выбросит ValueError при необходимости) 
+    check_window(window, len(data)) 
+
+    # Замер для list-реализации (существующая simple_moving_average) 
+    t0 = time.perf_counter() 
+    for _ in range(repeats): 
+        simple_moving_average(data, window) 
+    t_list = (time.perf_counter() - t0) / repeats 
+
+    # Замер для deque-реализации 
+    t0 = time.perf_counter() 
+    for _ in range(repeats): 
+        simple_moving_average_deque(data, window) 
+    t_deque = (time.perf_counter() - t0) / repeats 
+    return {"list": t_list, "deque": t_deque} 
 

@@ -20,12 +20,18 @@ import csv
 import json 
 import sys 
 from typing import List, Optional, Tuple 
-from num_series import ( 
-    random_series, sine_series, trend_series, 
-    summarize, 
-    simple_moving_average, centered_moving_average, exponential_moving_average, 
-    save_series_json, load_series_auto, 
-) 
+from num_series.generator import random_series, sine_series, trend_series
+from num_series.stats import summarize
+from num_series.moving_average import (
+    simple_moving_average,
+    centered_moving_average,
+    exponential_moving_average,
+    benchmark_moving_average,
+)
+from num_series.deque_average import simple_moving_average_deque
+from num_series.io_json import save_series_json
+from num_series.io_file import load_series_auto
+from num_series.best_window import best_window_by_rmse
 
 # --------------------------------------------------------------------------- 
 # Источники данных 
@@ -99,14 +105,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--load", metavar="PATH", 
                 help="загрузить ряд из файла (.json/.txt/.csv); " 
                     "отменяет --kind/--n/--seed") 
+    parser.add_argument( 
+        "--benchmark", 
+        action="store_true", 
+        help="замерить время выполнения SMA для list и deque", 
+    ) 
+
     # экспорт 
     parser.add_argument("--save", metavar="PATH", 
                 help="сохранить ряд в JSON-файл") 
     parser.add_argument("--export", metavar="FILE", 
                 help="экспортировать ряд в CSV (i, value)") 
     # анализ 
-    parser.add_argument("--window", type=int, default=3, 
-                help="размер окна для скользящей средней") 
+    parser.add_argument("--window", type=int, nargs="+", default=[10], 
+                help="одно или несколько окон для скользящей средней") 
     parser.add_argument("--alpha", type=float, default=0.3, 
                 help="коэффициент сглаживания для EMA, 0 < alpha <= 1") 
     return parser 
@@ -141,30 +153,63 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Ошибка экспорта: {err}", file=sys.stderr) 
             return 1 
  
-    # --- 3. Анализ --- 
-    try: 
-        stats = summarize(data) 
-        sma = simple_moving_average(data, args.window) 
-        ema = exponential_moving_average(data, args.alpha) 
-        cma = ( 
-            centered_moving_average(data, args.window) 
-            if args.window % 2 == 1 else None 
-        ) 
-    except ValueError as err: 
-        print(f"Ошибка анализа: {err}", file=sys.stderr) 
+    # --- 3. Анализ ---
+    try:
+        stats = summarize(data)
+        
+        # Фильтруем окна (отбрасываем <=0 и > n)
+        valid_windows = []
+        for w in args.window:
+            if 1 <= w <= len(data):
+                valid_windows.append(w)
+            else:
+                print(f"Предупреждение: окно {w} пропущено (невалидно для ряда длины {len(data)})", file=sys.stderr)
+                
+        if not valid_windows:
+            print("Ошибка: не осталось валидных окон для расчёта.", file=sys.stderr)
+            return 1
+
+        # Ищем лучшее окно по СКО
+        best_k, best_rmse = best_window_by_rmse(data, valid_windows)
+        
+    except ValueError as err:
+        print(f"Ошибка анализа: {err}", file=sys.stderr)
         return 1 
  
-    # --- 4. Вывод --- 
-    print_header(source) 
-    print_stats(stats) 
- 
-    print_series("Исходный ряд", data) 
-    print_series(f"SMA (window={args.window})", sma) 
-    print_series(f"EMA (alpha={args.alpha})", ema) 
-    if cma is not None: 
-        print_series(f"Центрированное MA (window={args.window})", cma) 
- 
-    print_footer() 
-    return 0 
-if __name__ == "__main__": 
+    # --- 4. Вывод ---
+    print_header(source)
+    print_stats(stats)
+    print_series("Исходный ряд", data)
+    
+    # Выводим результаты для каждого валидного окна
+    for w in valid_windows:
+        print("-" * 60)
+        print(f"Анализ для окна window={w}:")
+        
+        sma_list = simple_moving_average(data, w)
+        sma_deque = simple_moving_average_deque(data, w)
+        # Формула EMA для окна: alpha = 2 / (k + 1)
+        alpha = 2 / (w + 1)
+        ema = exponential_moving_average(data, alpha)
+        
+        print_series(f"SMA (list), window={w}", sma_list)
+        print_series(f"SMA (deque), window={w}", sma_deque)
+        print_series(f"EMA (alpha={alpha:.2f}), window={w}", ema)
+
+    # Выводим результат дополнительного показателя (Лучшее окно)
+    print("-" * 60)
+    print(f"Доп. показатель: Лучшее окно по минимальному СКО")
+    print(f"  Лучшее окно: {best_k}")
+    print(f"  Минимальное СКО: {best_rmse:.6f}")
+
+    if args.benchmark:
+        print("-" * 60)
+        print(f"Замер времени выполнения SMA (окно={valid_windows[0]}, среднее за 1000 повторов):")
+        timings = benchmark_moving_average(data, valid_windows[0], repeats=1000)
+        print(f"  list  : {timings['list']:.8f} c")
+        print(f"  deque : {timings['deque']:.8f} c")
+        print(f"  отношение (list/deque): {timings['list']/timings['deque']:.2f}")
+    print_footer()
+    return 0
+if __name__ == "__main__":
     raise SystemExit(main())
